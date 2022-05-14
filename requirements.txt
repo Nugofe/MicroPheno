@@ -1,0 +1,12 @@
+numpy
+pandas
+gensim
+biom-format
+scipy
+matplotlib
+keras
+seaborn
+scikit-learn
+tqdm
+biopython
+tensorflow
