@@ -68,9 +68,7 @@ class DNNMutliclass16S(object):
 
         encoder = LabelEncoder()
         encoder.fit(Y)
-        #self.labels=set(self.Y)
-        self.labels=list(encoder.classes_) # la posición que ocupa cada elemento es el número que se usa como encoding
-        self.C=len(self.labels)  # número de tipos de clasificación (2 -> CD, Not-CD)
+        self.C=len(set(self.Y))  # número de tipos de clasificación (2 -> CD, Not-CD)
         
         self.encoded_Y = encoder.transform(Y) # transform non-numerical labels (as long as they are hashable) to numerical labels
         self.onehot_y = np_utils.to_categorical(self.encoded_Y) # return a matrix of binary values (either ‘1’ or ‘0’). (rows = length of the input vector, columns = number of classes).
@@ -129,8 +127,24 @@ class DNNMutliclass16S(object):
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         return model
         
+    
+    # volver a crear el modelo, pero ahora entrenado en con todos los datos para guardar los pesos y las predicciones
+    def make_weights(self, file_path, f1mac):
+        if self.model_strct=='mlp':
+            model=self.get_MLP_model()
+        
+        model.fit(self.X, self.onehot_y, epochs=2, batch_size=len(self.X), shuffle=True, verbose=0)
 
-    def cross_validation(self, file_path, gpu_dev='2', n_fold=10, epochs=50, batch_size=100, pretrained_model=False, trainable=False):
+        weights=[]
+        for x in model.layers:
+            weights.append(x.get_weights())
+
+        self.weights_file_name=file_path + '/weights_' + '_'.join(['layers', self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))])
+        FileUtility.save_obj(self.weights_file_name,  weights)
+        self.weights_file_name=self.weights_file_name + '.pickle'
+
+
+    def tune_and_eval(self, file_path, gpu_dev='2', n_fold=10, epochs=50, batch_size=100, pretrained_model=False, trainable=False):
         '''
         :param file_path:
         :param gpu_dev:
@@ -218,23 +232,10 @@ class DNNMutliclass16S(object):
                             # file name                                                                                                                   # results to save
         FileUtility.save_obj(file_path + '/results_' + '_'.join([self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [latex_line, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
 
-        # volver a crear el modelo, pero ahora entrenado en con todos los datos para guardar los pesos y las predicciones
-        if self.model_strct=='mlp':
-            model=self.get_MLP_model()
-        
-        history = model.fit(self.X, self.onehot_y, epochs=2, batch_size=len(self.X), shuffle=True, verbose=0)
-        pred = model.predict_classes(self.X)
-
-        '''Saving the parameters and weights:   weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65'''
-        weights=[]
-        for x in model.layers:
-            weights.append(x.get_weights())
-
-        self.weights_file_name=file_path + '/weights_' + '_'.join(['layers', self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))])
-        FileUtility.save_obj(self.weights_file_name,  weights)
 
         # guardar los datos más importantes en un formato más leíble
-        attributes=['mean_f1_macro: ' + str(f1mac),        'mean_f1_micro: ' + str(f1mic), 
+        attributes=['model_arch: ' + str(self.model_arch),
+                    'mean_f1_macro: ' + str(f1mac),        'mean_f1_micro: ' + str(f1mic), 
                     'mean_precision_macro: ' + str(prmac), 'mean_precision_micro: ' + str(prmic),
                     'mean_recall_macro: ' + str(remac),    'mean_recall_micro: ' + str(remic),
                     'mean_accuracy: ' + str(maccur),       'mean_roc_auc: ' + str(mrocauc),
@@ -243,18 +244,18 @@ class DNNMutliclass16S(object):
                     'std_recall_macro: ' + str(sremac),    'std_recall_micro: ' + str(sremic),
                     'std_accuracy: ' + str(saccur),        'std_roc_auc: ' + str(srocauc)]
 
-        FileUtility.save_text_array(file_path+'/mean_std_metrics.txt', attributes)
+        FileUtility.save_text_array(file_path+'/best_metrics.txt', attributes)
         
-        y_predicted=[]
-        for x in pred:
-            y_predicted.append(self.labels[x])
-        FileUtility.save_text_array(file_path+'/y_predicted.txt', y_predicted)
+        # calcular los pesos de la red al entrenarla con todos los datos
+        self.make_weights(file_path, f1mac)
 
 
     # crear modelo con la función de activación final
-    def make_activation_function(self, file_name, X, last_layer=None): # filename = weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
+    def make_activation_function(self, X=None, file_name=None, last_layer=None): # filename = weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
         if file_name is None:
             file_name=self.weights_file_name
+        if X is None:
+            X=self.X
         
         pretrained_weights=FileUtility.load_obj(file_name)
         if last_layer:
@@ -285,7 +286,7 @@ class DNNMutliclass16S(object):
     @staticmethod
     def result_visualization(filename):
         [latex_line, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]=FileUtility.load_obj(filename)
-        #print(latex_line)
+        print(latex_line)
 
     @staticmethod
     def load_history(filename, fileout):

@@ -93,22 +93,30 @@ class KFoldCrossVal(CrossValidator):
         # - best_estimator: RF o SVM que obtuvo los mejores resultados (con sus atibutos y parámetros)
         # - cv_results_: métricas resultado  -                                                          ME INTERESA
         # - best_params_: parámetros que produjeron los mejores resultados  -                           ME INTERESA
-        # - y_predicted: resultados de la clasificación, que no los reales  -                           ME INTERESA
+        # - y_predicted: resultados de la clasificación, que no los reales
         FileUtility.save_obj(file_path+'/all_results', [label_set, conf, self.greed_search.best_score_, 
                                         self.greed_search.best_estimator_, self.greed_search.cv_results_, 
                                         self.greed_search.best_params_, y_predicted])
 
+
         # guardar los resultados más importantes en otro tipo de ficheros para que verlos más facilmente
         # explicación atributos: https://stackoverflow.com/questions/54608088/what-is-gridsearch-cv-results-could-any-explain-all-the-things-in-that-i-e-me
+        
+        # cv_results_: Each row of this dataframe gives the gridsearch metrics for one combination of the parameters
+        # RF: "n_estimators": [100, 200, 500, 1000]     SVM: 'C': [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.2, 0.5, 0.01, 0.02, 0.05, 0.001]
         df = pd.DataFrame(self.greed_search.cv_results_)
         df.to_csv(file_path + '/all_metrics.csv') # cv_results_ completo
 
-        df = df[df.columns.drop(list(df.filter(regex='time|param|rank|split')))] # cv_results_ filtado solo con las métricas
-        df.to_csv(file_path + '/filtered_metrics.csv')
+        
+        df = df.loc[df['params'] == self.greed_search.best_params_] # coger la fila de resultados del mejor estimador
+        df = df.iloc[: , 1:] # eliminar la primera columna (unnamed)
+        df = df[df.columns.drop(list(df.filter(regex='time|param|params|rank|split')))] # eliminar las columnas que no nos interesan
+        attributes=['best_params_: ' + str(self.greed_search.best_params_)]
+        for (column, value) in zip(df.columns.tolist(), df.values[0].tolist()):
+            attributes.append(column + ': ' + str(value))
 
-        FileUtility.save_text_array(file_path+'/y_predicted.txt', y_predicted) # clasificaciones predichas
+        FileUtility.save_text_array(file_path+'/best_metrics.txt', attributes)
 
-        attributes=['best_score_: ' + str(self.greed_search.best_score_), 'best_params_: ' + str(self.greed_search.best_params_)] 
-        FileUtility.save_text_array(file_path+'/best_attributes.txt', attributes)
+        
 
 
