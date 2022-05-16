@@ -104,7 +104,6 @@ class KFoldCrossVal(CrossValidator):
         df.to_csv(file_path + '/all_metrics.csv') # cv_results_ completo
 
         df = df[df.columns.drop(list(df.filter(regex='time|param|rank|split')))] # cv_results_ filtado solo con las métricas
-        df = df.drop(columns=df.columns[0], axis=1) # eliminar primera columna (unnamed)
         df.to_csv(file_path + '/filtered_metrics.csv')
 
         FileUtility.save_text_array(file_path+'/y_predicted.txt', y_predicted) # clasificaciones predichas

@@ -62,14 +62,20 @@ class DNNMutliclass16S(object):
     # - early stopping y droppout para evitar overfitting
     # (weights less than one are dropouts in model_arch and the rest the sizes of the hidden layers)
     
-    def __init__(self, X,Y, model_arch=[500]): # model_arch=[1024,0.2,512,0.2,256,0.1,128,8]   num > 0 : sieze of hidden layer,   num < 0 : dropout
+    def __init__(self, X,Y, model_strct='mlp', model_arch=[500]): # model_arch=[1024,0.2,512,0.2,256,0.1,128,8]   num > 0 : sieze of hidden layer,   num < 0 : dropout
         self.X=X
         self.Y=Y
-        self.C=len(set(Y))  # número de clasificaciones = 1359 (porque Y es el .txt con los resultados reales CD, Not-CD)
+
         encoder = LabelEncoder()
         encoder.fit(Y)
+        #self.labels=set(self.Y)
+        self.labels=list(encoder.classes_) # la posición que ocupa cada elemento es el número que se usa como encoding
+        self.C=len(self.labels)  # número de tipos de clasificación (2 -> CD, Not-CD)
+        
         self.encoded_Y = encoder.transform(Y) # transform non-numerical labels (as long as they are hashable) to numerical labels
         self.onehot_y = np_utils.to_categorical(self.encoded_Y) # return a matrix of binary values (either ‘1’ or ‘0’). (rows = length of the input vector, columns = number of classes).
+        
+        self.model_strct=model_strct # mlp
         self.model_arch=model_arch
     
     def get_MLP_model(self):
@@ -96,8 +102,7 @@ class DNNMutliclass16S(object):
         # función de coste = cross entropy, optimizador de backpropagation = adam, juzgar la calidad del modelo = accuracy
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-        #print('INICIO MODEL!!!!!\n' + model +  '\nFIN MODEL!!!!!\n')
-        #print('INICIO MODEL SUMARY!!!!!\n' + model.summary() +  '\nFIN MODEL SUMMARY!!!!!')
+        #print('INICIO MODEL SUMARY!!!!!\n' + str(model.summary()) +  '\nFIN MODEL SUMMARY!!!!!|n')
         return model
 
     # ESTA NO
@@ -124,8 +129,8 @@ class DNNMutliclass16S(object):
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         return model
         
-    
-    def cross_validation(self, file_path, gpu_dev='2', n_fold=10, epochs=50, batch_size=100, model_strct='mlp', pretrained_model=False, trainable=False):
+
+    def cross_validation(self, file_path, gpu_dev='2', n_fold=10, epochs=50, batch_size=100, pretrained_model=False, trainable=False):
         '''
         :param file_path:
         :param gpu_dev:
@@ -160,10 +165,10 @@ class DNNMutliclass16S(object):
             y_class_valid=self.encoded_Y[valid_index]
             
             if pretrained_model:
-                model=self.get_pretrained_model(model_strct, trainable)
+                model=self.get_pretrained_model(self.model_strct, trainable)
             else: # ESTA SI
-                if model_strct=='mlp':
-                    model=self.get_MLP_model() # modelo con sus capas, pesos, funciones de activación... pero sin entrenar
+                if self.model_strct=='mlp':
+                    model=self.get_MLP_model() # modelo con sus capas, pesos, funciones de activación...
             
             # fitting: entrenar el modelo
             history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, shuffle=True, validation_data=(X_valid, y_valid), verbose=0)
@@ -179,6 +184,7 @@ class DNNMutliclass16S(object):
             accuracy.append(accuracy_score(y_class_valid,pred))
             roc_auc.append(roc_auc_score(y_class_valid,pred))
 
+        # guardar las métricas obtenidas
         # mean values
         f1mac=np.mean(f1_macro)
         f1mic=np.mean(f1_micro)
@@ -199,47 +205,63 @@ class DNNMutliclass16S(object):
         srocauc=np.std(roc_auc)
         # table
         latex_line=' & '.join([str(np.round(x,2))+' $\\pm$ '+str(np.round(y,2)) for x,y in [ [prmic, sprmic], [remic, sremic], [f1mic, sf1mic], [prmac, sprmac], [remac, sremac], [f1mac, sf1mac], [maccur, saccur], [mrocauc, srocauc] ]])      
-
         
         history_dict = history.history
         loss_values = history_dict['loss']
         val_loss_values = history_dict['val_loss']
         epochs = range(1, len(loss_values) + 1)
 
-        '''
-        Saving the results
-            results_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
-        '''
+        '''Saving the metrics:   results_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65'''
         if pretrained_model:
-            model_strct='pretrained'
+            self.model_strct='pretrained'
 
-                            # file name                                                                                               # results to save
-        FileUtility.save_obj(file_path + '/results_' + '_'.join([model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [latex_line, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
+                            # file name                                                                                                                   # results to save
+        FileUtility.save_obj(file_path + '/results_' + '_'.join([self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [latex_line, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
+
+        # volver a crear el modelo, pero ahora entrenado en con todos los datos para guardar los pesos y las predicciones
+        if self.model_strct=='mlp':
+            model=self.get_MLP_model()
         
+        history = model.fit(self.X, self.onehot_y, epochs=2, batch_size=len(self.X), shuffle=True, verbose=0)
+        pred = model.predict_classes(self.X)
+
+        '''Saving the parameters and weights:   weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65'''
         weights=[]
         for x in model.layers:
             weights.append(x.get_weights())
 
-        '''
-        Saving the parameters and weights
-            weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
-        '''
-        FileUtility.save_obj(file_path + '/weights_' + '_'.join(['layers', model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  weights)
-
+        self.weights_file_name=file_path + '/weights_' + '_'.join(['layers', self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))])
+        FileUtility.save_obj(self.weights_file_name,  weights)
 
         # guardar los datos más importantes en un formato más leíble
-        
-        
+        attributes=['mean_f1_macro: ' + str(f1mac),        'mean_f1_micro: ' + str(f1mic), 
+                    'mean_precision_macro: ' + str(prmac), 'mean_precision_micro: ' + str(prmic),
+                    'mean_recall_macro: ' + str(remac),    'mean_recall_micro: ' + str(remic),
+                    'mean_accuracy: ' + str(maccur),       'mean_roc_auc: ' + str(mrocauc),
+                    'std_f1_macro: ' + str(sf1mac),        'std_f1_micro: ' + str(sf1mic), 
+                    'std_precision_macro: ' + str(sprmac), 'std_precision_micro: ' + str(sprmic),
+                    'std_recall_macro: ' + str(sremac),    'std_recall_micro: ' + str(sremic),
+                    'std_accuracy: ' + str(saccur),        'std_roc_auc: ' + str(srocauc)]
 
-    @staticmethod
-    def make_activation_function(file_name, X, last_layer=None): # filename = weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
+        FileUtility.save_text_array(file_path+'/mean_std_metrics.txt', attributes)
+        
+        y_predicted=[]
+        for x in pred:
+            y_predicted.append(self.labels[x])
+        FileUtility.save_text_array(file_path+'/y_predicted.txt', y_predicted)
+
+
+    # crear modelo con la función de activación final
+    def make_activation_function(self, file_name, X, last_layer=None): # filename = weights_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
+        if file_name is None:
+            file_name=self.weights_file_name
+        
         pretrained_weights=FileUtility.load_obj(file_name)
         if last_layer:
             h_sizes=[float(x) for x in file_name.split('/')[-1].split('_')[3].split('-')]+[last_layer]
         else:
-            h_sizes=[float(x) for x in file_name.split('/')[-1].split('_')[3].split('-')] # ESTE SI (h_sizes = tamaños de las capas que calcularon en cross_validation)
-            #print("h_sizes!!!!!!!!!")
-            #print(h_sizes)
+            h_sizes=[float(x) for x in file_name.split('/')[-1].split('_')[3].split('-')] # ESTE SI (h_sizes = tamaños de las capas que se calcularon en cross_validation; basicamente el model_arch)
+
         model = Sequential()
         for layer_idx, h_layer_size in enumerate(h_sizes):
             if layer_idx==0:
@@ -248,12 +270,14 @@ class DNNMutliclass16S(object):
                 if h_layer_size < 1:
                     model.add(Dropout(h_layer_size, weights=pretrained_weights[layer_idx]))
                 else:
-                    if layer_idx == len(h_sizes)-1 and last_layer: # esta no la va a hacer nunca ?????? (last_layer=None)
+                    if layer_idx == len(h_sizes)-1 and last_layer: # en nuestro estudio, ésta no la va a hacer nunca 
                         model.add(Dense(int(h_layer_size), weights=pretrained_weights[layer_idx], activation='softmax'))
                     else:
                         model.add(Dense(int(h_layer_size), weights=pretrained_weights[layer_idx], activation='relu'))
         activations = model.predict(X) # Generates output predictions for the input samples.
-        np.savetxt(file_name.replace(file_name.split('/')[-1].split('_')[0],'activationlayer'),  activations) # activationlayer_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65
+
+        '''Saving the activation layer results:   activationlayer_layers_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65'''
+        np.savetxt(file_name.replace(file_name.split('/')[-1].split('_')[0],'activationlayer'),  activations)
         
         return activations
     
@@ -261,7 +285,7 @@ class DNNMutliclass16S(object):
     @staticmethod
     def result_visualization(filename):
         [latex_line, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]=FileUtility.load_obj(filename)
-        print(latex_line)
+        #print(latex_line)
 
     @staticmethod
     def load_history(filename, fileout):
