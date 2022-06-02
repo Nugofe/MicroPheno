@@ -13,21 +13,6 @@ sys.path.append('../')
 import numpy
 import pandas
 
-# from tensorflow.keras.models import Sequential
-# from tensorflow.keras.layers import Dense, Dropout, Activation
-# from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Flatten, Dense
-# from tensorflow.keras.layers import Conv1D, GlobalMaxPooling1D
-# from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
-
-# from tensorflow.python.keras.models import Sequential
-# from tensorflow.python.keras.layers import Dense, Dropout, Activation
-# from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D, Flatten, Dense
-# from tensorflow.python.keras.layers import Conv1D, GlobalMaxPooling1D
-# from tensorflow.python.keras.wrappers.scikit_learn import KerasClassifier
-
-#from tensorflow.keras import utils
-#from tensorflow.keras import utils as np_utils
-
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation
 from keras.layers import Convolution2D, MaxPooling2D, Flatten, Dense
@@ -129,11 +114,11 @@ class DNNMutliclass16S(object):
         
     
     # volver a crear el modelo, pero ahora entrenado en con todos los datos para guardar los pesos y las predicciones
-    def make_weights(self, file_path, f1mac):
+    def make_weights(self, file_path, epochs, batch_size, f1mac):
         if self.model_strct=='mlp':
             model=self.get_MLP_model()
         
-        model.fit(self.X, self.onehot_y, epochs=2, batch_size=len(self.X), shuffle=True, verbose=0)
+        model.fit(self.X, self.onehot_y, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=0)
 
         weights=[]
         for x in model.layers:
@@ -247,7 +232,7 @@ class DNNMutliclass16S(object):
         FileUtility.save_text_array(file_path+'/best_metrics.txt', attributes)
         
         # calcular los pesos de la red al entrenarla con todos los datos
-        self.make_weights(file_path, f1mac)
+        self.make_weights(file_path, epochs, batch_size, f1mac)
 
 
     # crear modelo con la función de activación final
