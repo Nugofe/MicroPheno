@@ -51,7 +51,7 @@ class KFoldCrossVal(CrossValidator):
         # - shuffle: Whether to shuffle each class’s samples before splitting into batches. 
         #   Note that the samples within each split will not be shuffled.
         # - random_state: When shuffle is True, random_state affects the ordering of the indices, 
-        #   which controls the randomness of each fold for each class. Otherwise, leave random_state as None.                         NON COMPRENDO BEN ISTO
+        #   which controls the randomness of each fold for each class. Otherwise, leave random_state as None.
         self.cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=random_state)
         self.X = X
         self.Y = Y
@@ -116,7 +116,3 @@ class KFoldCrossVal(CrossValidator):
             attributes.append(column + ': ' + str(value))
 
         FileUtility.save_text_array(file_path+'/best_metrics.txt', attributes)
-
-        
-
-

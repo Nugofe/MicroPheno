@@ -29,11 +29,11 @@ class RFClassifier:
         # - n_estimators: The number of trees in the forest.
         self.model = RandomForestClassifier(bootstrap=True, criterion='gini',
                                             min_samples_split=2, max_features='auto', min_samples_leaf=1,
-                                            n_estimators=1000)
+                                            n_estimators=1000) # esta configuración non serve para nada, éralles mellor inicializalo baleiro
         self.X = X
         self.Y = Y
 
-    def tune_and_eval(self, results_file_path, params=None, n_fold=10, n_jobs=2): #n_jobs=15
+    def tune_and_eval(self, results_file_path, params=None, n_fold=10, n_jobs=1): #n_jobs=15
         # búsqueda de parámetros óptimos
         if params is None:
             params = [{"n_estimators": [100, 200, 500, 1000],
@@ -43,7 +43,7 @@ class RFClassifier:
                        'min_samples_leaf': [1]}]
 
         self.CV = KFoldCrossVal(self.X, self.Y, folds=n_fold) # CV = K-fold Cross Validation (k=10)
-        self.CV.tune_and_evaluate(self.model, parameters=params, score='f1_macro', file_path=results_file_path, n_jobs=n_jobs)
+        self.CV.tune_and_evaluate(self.model, parameters=params, score='f1_micro', file_path=results_file_path, n_jobs=n_jobs)
 
 # Support Vector Machine
 class SVM:
@@ -65,8 +65,8 @@ class SVM:
     # ejecutar el entrenamiento
     def tune_and_eval(self, results_file_path,
                       params=[{'C': [1000, 500, 200, 100, 50, 20, 10, 5, 2, 
-                                     1, 0.2, 0.5, 0.01, 0.02, 0.05, 0.001]}], n_fold=10, n_jobs=2):  #n_jobs=10
+                                     1, 0.2, 0.5, 0.01, 0.02, 0.05, 0.001]}], n_fold=10, n_jobs=1):  #n_jobs=10
         
         # hacer Cross Validation
         CV = KFoldCrossVal(self.X, self.Y, folds=n_fold)
-        CV.tune_and_evaluate(self.model, parameters=params, score='f1_macro', file_path=results_file_path, n_jobs=n_jobs)
+        CV.tune_and_evaluate(self.model, parameters=params, score='f1_micro', file_path=results_file_path, n_jobs=n_jobs)

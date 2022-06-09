@@ -31,10 +31,9 @@ def create_mat_plot(mat, axis_names, title, filename, xlab, ylab, cmap='inferno'
     '''
     plt.rc('text', usetex=True)
     if len(axis_names)==0:
-        ax = sns.heatmap(mat,annot=annot, cmap=cmap,fmt="d")
+        ax = sns.heatmap(mat,annot=annot, cmap=cmap, fmt="g")
     else:
-        # removed fmt="d",
-        ax = sns.heatmap(mat,annot=annot, yticklabels=axis_names, xticklabels=axis_names, cmap=cmap)
+        ax = sns.heatmap(mat,annot=annot, yticklabels=axis_names, xticklabels=axis_names, cmap=cmap, fmt="g")
     plt.title(title)
     params = {
         'legend.fontsize': font_s,

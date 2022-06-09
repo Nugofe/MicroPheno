@@ -122,7 +122,7 @@ class FileUtility(object):
     ################ LAS MÍAS ################
 
     @staticmethod
-    def save_text_array(file, elements): # file =  path + filen_name
+    def save_text_array(file, elements): # file =  path + file_name
         with open(file, mode='wt', encoding='utf-8') as myfile:
             for e in elements:
                 myfile.write(e)

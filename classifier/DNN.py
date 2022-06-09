@@ -27,7 +27,7 @@ from sklearn.pipeline import Pipeline
 from utility.file_utility import FileUtility
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, roc_auc_score, confusion_matrix
 from gensim.models.wrappers import FastText
 import itertools
 import os
@@ -53,11 +53,12 @@ class DNNMutliclass16S(object):
 
         encoder = LabelEncoder()
         encoder.fit(Y)
+
         self.C=len(set(self.Y))  # número de tipos de clasificación (2 -> CD, Not-CD)
         
         self.encoded_Y = encoder.transform(Y) # transform non-numerical labels (as long as they are hashable) to numerical labels
         self.onehot_y = np_utils.to_categorical(self.encoded_Y) # return a matrix of binary values (either ‘1’ or ‘0’). (rows = length of the input vector, columns = number of classes).
-        
+
         self.model_strct=model_strct # mlp
         self.model_arch=model_arch
     
@@ -118,7 +119,7 @@ class DNNMutliclass16S(object):
         if self.model_strct=='mlp':
             model=self.get_MLP_model()
         
-        model.fit(self.X, self.onehot_y, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=0)
+        model.fit(self.X, self.onehot_y, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=1)
 
         weights=[]
         for x in model.layers:
@@ -129,7 +130,8 @@ class DNNMutliclass16S(object):
         self.weights_file_name=self.weights_file_name + '.pickle'
 
 
-    def tune_and_eval(self, file_path, gpu_dev='2', n_fold=10, epochs=50, batch_size=100, pretrained_model=False, trainable=False):
+    def tune_and_eval(self, file_path, gpu_dev='2', n_fold=10, epochs=50, batch_size=100, 
+                                        pretrained_model=False, trainable=False, save_weights=True):
         '''
         :param file_path:
         :param gpu_dev:
@@ -139,6 +141,7 @@ class DNNMutliclass16S(object):
         :param model_strct: Model structure (MLP in our case)
         :param pretrained_model:
         :param trainable:
+        :param save_weights: gardar os pesos da rede entrenada con todos os datos
         :return:
         '''
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_dev # CPUs ???
@@ -153,15 +156,24 @@ class DNNMutliclass16S(object):
         f1_macro=[]
         accuracy=[]
         roc_auc=[]
+        
+        actual_classes = np.empty([0], dtype=int)
+        predicted_classes = np.empty([0], dtype=int)
 
         for train_index, valid_index in skf.split(self.X, self.Y): # Generate indices to split data into training and validation set
             print ('\n Evaluation on a new fold is now get started ..')
             X_train=self.X[train_index,:]
-            y_train=self.onehot_y[train_index,:]
-            y_class_train=self.encoded_Y[train_index] # clasificación real (0, 1)
+            y_train=self.onehot_y[train_index,:]      # clasificación real COMPLEJE ( [1,0], [0,1] )
+            y_class_train=self.encoded_Y[train_index] # clasificación real SIMPLE   ( 0, 1 )
+
             X_valid=self.X[valid_index,:]
             y_valid=self.onehot_y[valid_index,:]
             y_class_valid=self.encoded_Y[valid_index]
+
+            #print('y_train           !!!!!!!!! ' + str(y_train))
+            #print('y_class_train     !!!!!!!!! ' + str(y_class_train))
+            #print('y_valid           !!!!!!!!! ' + str(y_valid))
+            #print('y_class_valid     !!!!!!!!! ' + str(y_class_valid))
             
             if pretrained_model:
                 model=self.get_pretrained_model(self.model_strct, trainable)
@@ -170,18 +182,26 @@ class DNNMutliclass16S(object):
                     model=self.get_MLP_model() # modelo con sus capas, pesos, funciones de activación...
             
             # fitting: entrenar el modelo
-            history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, shuffle=True, validation_data=(X_valid, y_valid), verbose=0)
+            history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, shuffle=True, validation_data=(X_valid, y_valid), verbose=1)
             pred = model.predict_classes(X_valid) # Generate class predictions for the input samples batch by batch for the validation set (como el batch ya se estableció antes, aquí ya no se indica)
             
             # score-calculations
-            f1_micro.append(f1_score(y_class_valid,pred, average='micro'))
-            f1_macro.append(f1_score(y_class_valid,pred, average='macro'))
-            p_micro.append(precision_score(y_class_valid,pred, average='micro'))
-            p_macro.append(precision_score(y_class_valid,pred, average='macro'))
-            r_micro.append(recall_score(y_class_valid,pred, average='micro'))
-            r_macro.append(recall_score(y_class_valid,pred, average='macro'))
-            accuracy.append(accuracy_score(y_class_valid,pred))
-            roc_auc.append(roc_auc_score(y_class_valid,pred))
+            f1_micro.append(f1_score(y_class_valid, pred, average='micro'))
+            f1_macro.append(f1_score(y_class_valid, pred, average='macro'))
+            p_micro.append(precision_score(y_class_valid, pred, average='micro'))
+            p_macro.append(precision_score(y_class_valid, pred, average='macro'))
+            r_micro.append(recall_score(y_class_valid, pred, average='micro'))
+            r_macro.append(recall_score(y_class_valid, pred, average='macro'))
+            accuracy.append(accuracy_score(y_class_valid, pred))
+            roc_auc.append(roc_auc_score(y_class_valid, pred))
+            
+            actual_classes = np.append(actual_classes, y_class_valid)
+            predicted_classes = np.append(predicted_classes, pred)
+            #print('y_valid           !!!!!!!!! ' + str(y_valid))
+            #print('pred              !!!!!!!!! ' + str(pred))
+            #print('actual_classes    !!!!!!!!! ' + str(actual_classes))
+            #print('predicted_classes !!!!!!!!! ' + str(predicted_classes))
+
 
         # guardar las métricas obtenidas
         # mean values
@@ -203,19 +223,24 @@ class DNNMutliclass16S(object):
         saccur=np.std(accuracy)
         srocauc=np.std(roc_auc)
         # table
-        latex_line=' & '.join([str(np.round(x,2))+' $\\pm$ '+str(np.round(y,2)) for x,y in [ [prmic, sprmic], [remic, sremic], [f1mic, sf1mic], [prmac, sprmac], [remac, sremac], [f1mac, sf1mac], [maccur, saccur], [mrocauc, srocauc] ]])      
+        #latex_line=' & '.join([str(np.round(x,2))+' $\\pm$ '+str(np.round(y,2)) for x,y in [ [prmic, sprmic], [remic, sremic], [f1mic, sf1mic], [prmac, sprmac], [remac, sremac], [f1mac, sf1mac], [maccur, saccur], [mrocauc, srocauc] ]])      
         
         history_dict = history.history
         loss_values = history_dict['loss']
         val_loss_values = history_dict['val_loss']
         epochs = range(1, len(loss_values) + 1)
 
+        labels_num = list(set(self.encoded_Y)) # 0 = CD, 1 = Not-CD
+        labels_alphanum = list(set(self.Y))
+        
+        conf=confusion_matrix(actual_classes, predicted_classes, labels=labels_num)
+
         '''Saving the metrics:   results_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65'''
         if pretrained_model:
             self.model_strct='pretrained'
 
                             # file name                                                                                                                   # results to save
-        FileUtility.save_obj(file_path + '/results_' + '_'.join([self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [latex_line, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
+        FileUtility.save_obj(file_path + '/results_' + '_'.join([self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [labels_alphanum, conf, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
 
 
         # guardar los datos más importantes en un formato más leíble
@@ -232,7 +257,8 @@ class DNNMutliclass16S(object):
         FileUtility.save_text_array(file_path+'/best_metrics.txt', attributes)
         
         # calcular los pesos de la red al entrenarla con todos los datos
-        self.make_weights(file_path, epochs, batch_size, f1mac)
+        if save_weights:
+            self.make_weights(file_path, epochs, batch_size, f1mac)
 
 
     # crear modelo con la función de activación final
@@ -302,68 +328,6 @@ class DNNMutliclass16S(object):
         plt.show()
 
 
-# esto se hace en el notebook en las 2 primeras celdas
-def crohns_disease():
-    '''
-    '''
-    #[1024,0.2,256,0.1,256,0.1,128,0.1,64]
-    X=FileUtility.load_sparse_csr('../../datasets/processed_data/crohn/sample-size/6-mers_rate_complete1359_seq_5000.npz').toarray()
-    Y=FileUtility.load_list('../../datasets/processed_data/crohn/data_config/labels_disease_complete1359.txt')
-    DNN=DNNMutliclass16S(X,Y,model_arch=[512,0.2,256,0.2,128,0.1,64,16])
-    DNN.cross_validation('../../datasets/results/crohn/classifier/nn', gpu_dev='2', n_fold=3, epochs=25, batch_size=10, model_strct='mlp')
-
-# ESTAS NO
-def bodysite():
-    X=FileUtility.load_sparse_csr('../MicroPheno_datasets/body-sites/k-mer_representations_labels/6-mers_rate_5000.npz').toarray()
-    Y=FileUtility.load_list('../MicroPheno_datasets/body-sites/k-mer_representations_labels/labels_phen.txt')
-    DNN=DNNMutliclass16S(X,Y,model_arch=[512,0.2,256,0.2,128,0.1,64])
-    DNN.cross_validation('../MicroPheno_datasets/body-sites/nn', gpu_dev='2', n_fold=3, epochs=300, batch_size=10, model_strct='mlp')
-
-def eco_classification():
-    '''
-    '''
-    #[1024,0.2,256,0.1,256,0.1,128,0.1,64]
-    for d1 in [500]:
-        X=FileUtility.load_sparse_csr('../../datasets/processed_data/eco/K/6-mer_eco_restrictedmer.npz').toarray()
-        Y=FileUtility.load_list('../../datasets/processed_data/eco/K/eco_label_restrictedkmer.txt')
-        DNN=DNNMutliclass16S(X,Y,model_arch=[2048,0.2,128])
-        DNN.cross_validation('../../datasets/results/eco/classifier/nn', gpu_dev='2', n_fold=5, epochs=30, batch_size=100, model_strct='mlp')
-
-def eco_10000_classification():
-    '''
-    '''
-    #[1024,0.2,256,0.1,256,0.1,128,0.1,64]
-    X=FileUtility.load_sparse_csr('../../datasets/processed_data/eco_10000/K/6-mer_eco_restrictedmer.npz').toarray()
-    Y=FileUtility.load_list('../../datasets/processed_data/eco_10000/K/eco_label_restrictedkmer.txt')
-    DNN=DNNMutliclass16S(X,Y,model_arch=[1024,0.2,1024,0.2,512,0.2,512,0.1,128,0.1,64])
-    DNN.cross_validation('../../datasets/results/eco_10000/classifiers/nn', gpu_dev='1', n_fold=5, epochs=10, batch_size=1000, model_strct='mlp')
-
-def eco_all_classification():
-    '''
-    '''
-    #[1024,0.2,256,0.1,256,0.1,128,0.1,64]
-    X=FileUtility.load_sparse_csr('../../datasets/processed_data/eco_all_classes/6-mer_eco_restrictedmer_all.npz').toarray()
-    Y=FileUtility.load_list('../../datasets/processed_data/eco_all_classes/eco_label_restrictedkmer_all.txt')
-    DNN=DNNMutliclass16S(X,Y,model_arch=[1024,0.2,512,0.2,512,0.1,256])
-    DNN.cross_validation('../../datasets/results/eco_all/nn', gpu_dev='1', n_fold=10, epochs=20, batch_size=10, model_strct='mlp')
-    
-def eco_all_classification_transfer_learning():
-    '''
-    '''
-    #[1024,0.2,256,0.1,256,0.1,128,0.1,64]
-    X=FileUtility.load_sparse_csr('../../datasets/processed_data/eco_all_classes/6-mer_eco_restrictedmer_all.npz').toarray()
-    Y=FileUtility.load_list('../../datasets/processed_data/eco_all_classes/eco_label_restrictedkmer_all.txt')
-    DNN=DNNMutliclass16S(X,Y,model_arch=[512,0.1,256, 0.1,128])
-    DNN.cross_validation('../../datasets/results/eco_all/nn', gpu_dev='6', pretrained_model=True,trainable=False, n_fold=5, epochs=10, batch_size=10, model_strct='../../datasets/results/eco_10000/classifiers/nn_layers_mlp_1024-0.2-512-0.2-512_0.88.pickle')
-
-def org_classification():
-    '''
-    '''
-    X=FileUtility.load_sparse_csr('../../datasets/processed_data/org/K/6-mer_org_restrictedkmer.npz').toarray()
-    Y=FileUtility.load_list('../../datasets/processed_data/org/K/org_label_restrictedkmer.txt')
-    DNN=DNNMutliclass16S(X,Y,model_arch=[1024,0.2,256,0.1,256,0.1,128,0.1,64])
-    DNN.cross_validation('../../datasets/results/org/classifier/nn', gpu_dev='2', n_fold=10, epochs=30, batch_size=100, model_strct='mlp')
-
-if __name__=='__main__':
-    bodysite()
+#if __name__=='__main__':
+    #bodysite()
 
