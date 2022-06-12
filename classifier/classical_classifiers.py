@@ -16,7 +16,7 @@ from sklearn.svm import LinearSVC, SVC
 
 # Random Forest
 class RFClassifier:
-    def __init__(self, X, Y):
+    def __init__(self, X, Y, labels=None):
 
         # https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
         # - bootstrap: Whether bootstrap samples are used when building trees. 
@@ -33,6 +33,19 @@ class RFClassifier:
         self.X = X
         self.Y = Y
 
+        self.labels_num=list(set(self.Y))  # labels en formato número:  1 = CD, 0 = Not-CD
+        self.labels_num.sort()             # para que se ponga primero el 0
+        self.C=len(self.labels_num)        # número de tipos de clasificación (2 -> CD, Not-CD)
+        
+        if labels:                         # labels en formato letra, si se las he pasado
+            self.labels=labels
+        else:
+            self.labels=self.labels_num
+
+        print('labels_num  !!!!!!!!!!!' + str(self.labels_num))
+        print('labels      !!!!!!!!!!!' + str(self.labels))
+
+
     def tune_and_eval(self, results_file_path, params=None, n_fold=10, n_jobs=1): #n_jobs=15
         # búsqueda de parámetros óptimos
         if params is None:
@@ -42,12 +55,13 @@ class RFClassifier:
                        'min_samples_split': [5],  # 2,5,10
                        'min_samples_leaf': [1]}]
 
-        self.CV = KFoldCrossVal(self.X, self.Y, folds=n_fold) # CV = K-fold Cross Validation (k=10)
-        self.CV.tune_and_evaluate(self.model, parameters=params, score='f1_micro', file_path=results_file_path, n_jobs=n_jobs)
+        self.CV = KFoldCrossVal(self.X, self.Y, self.labels_num, self.labels, folds=n_fold) # CV = K-fold Cross Validation (k=10)
+        self.CV.tune_and_evaluate(self.model, parameters=params, score='f1_macro', file_path=results_file_path, n_jobs=n_jobs)
+
 
 # Support Vector Machine
 class SVM:
-    def __init__(self, X, Y, clf_model='LSVM'):
+    def __init__(self, X, Y, labels=None, clf_model='LSVM'):
         # escoger el tipo de SVM
         if clf_model == 'LSVM': # ESTA SI
             # [https://scikit-learn.org/stable/modules/generated/sklearn.svm.LinearSVC.html](https://scikit-learn.org/stable/modules/generated/sklearn.svm.LinearSVC.html)
@@ -59,8 +73,22 @@ class SVM:
         else:
             self.model = SVC(C=1.0, kernel='rbf')
             self.type = 'rbf' # Radial Basis Function kernel
+        
         self.X = X
         self.Y = Y
+
+        self.labels_num=list(set(self.Y))  # labels en formato número:  1 = CD, 0 = Not-CD
+        self.labels_num.sort()             # para que se ponga primero el 0
+        self.C=len(self.labels_num)        # número de tipos de clasificación (2 -> CD, Not-CD)
+        
+        if labels:                         # labels en formato letra, si se las he pasado
+            self.labels=labels
+        else:
+            self.labels=self.labels_num
+
+        print('labels_num  !!!!!!!!!!!' + str(self.labels_num))
+        print('labels      !!!!!!!!!!!' + str(self.labels))
+
 
     # ejecutar el entrenamiento
     def tune_and_eval(self, results_file_path,
@@ -68,5 +96,5 @@ class SVM:
                                      1, 0.2, 0.5, 0.01, 0.02, 0.05, 0.001]}], n_fold=10, n_jobs=1):  #n_jobs=10
         
         # hacer Cross Validation
-        CV = KFoldCrossVal(self.X, self.Y, folds=n_fold)
-        CV.tune_and_evaluate(self.model, parameters=params, score='f1_micro', file_path=results_file_path, n_jobs=n_jobs)
+        CV = KFoldCrossVal(self.X, self.Y, self.labels_num, self.labels, folds=n_fold)
+        CV.tune_and_evaluate(self.model, parameters=params, score='f1_macro', file_path=results_file_path, n_jobs=n_jobs)

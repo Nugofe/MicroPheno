@@ -12,6 +12,7 @@ from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_pre
 from utility.file_utility import FileUtility
 from sklearn.metrics import f1_score,confusion_matrix
 import pandas as pd
+import time
 
 
 class CrossValidator(object):
@@ -37,7 +38,7 @@ class KFoldCrossVal(CrossValidator):
     '''
         K-fold cross-validation tuning and evaluation
     '''
-    def __init__(self, X, Y, folds=10, random_state=1):
+    def __init__(self, X, Y, labels_num, labels, folds=10, random_state=1):
         '''
         :param X:
         :param Y:
@@ -55,6 +56,8 @@ class KFoldCrossVal(CrossValidator):
         self.cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=random_state)
         self.X = X
         self.Y = Y
+        self.labels_num = labels_num
+        self.labels = labels
 
     # ejecutamos el CV, entrenamos el modelo con los parámetros óptimos y guardamos los resultados
     def tune_and_evaluate(self, estimator, parameters, score='macro_f1', n_jobs=-1, file_path='results'):
@@ -74,17 +77,21 @@ class KFoldCrossVal(CrossValidator):
         # - scoring: Strategy to evaluate the performance of the cross-validated model on the test set (f1_macro no noso caso).
         # - refit: Refit (reaxustar) an estimator using the best found parameters on the whole dataset.
         # - error_score: Value to assign to the score if an error occurs in estimator fitting.
-        # - n_jobs: Number of jobs to run in parallel (15 para RF, 10 para SVM).
+        # - n_jobs: Number of jobs to run in parallel.
+        start_time = time.time()
+        
         self.greed_search = GridSearchCV(estimator=estimator, param_grid=parameters, cv=self.cv, scoring=self.scoring,
                                          refit=score, error_score=0, n_jobs=n_jobs)
-        label_set=list(set(self.Y))
 
         # ejecutar greed_search (fitting)
         self.greed_search.fit(X=self.X, y=self.Y)
 
         # entrenar el modelo con los mejores parámetros
         y_predicted = cross_val_predict(self.greed_search.best_estimator_, self.X, self.Y)
-        conf=confusion_matrix(self.Y, y_predicted, labels=label_set)
+
+        end_time = time.time() - start_time
+
+        conf=confusion_matrix(self.Y, y_predicted, labels=self.labels_num)
 
         # guadar resultados en un .pickle
         # - label_set: CD, Not-CD
@@ -94,7 +101,7 @@ class KFoldCrossVal(CrossValidator):
         # - cv_results_: métricas resultado  -                                                          ME INTERESA
         # - best_params_: parámetros que produjeron los mejores resultados  -                           ME INTERESA
         # - y_predicted: resultados de la clasificación, que no los reales
-        FileUtility.save_obj(file_path+'/all_results', [label_set, conf, self.greed_search.best_score_, 
+        FileUtility.save_obj(file_path+'/all_results', [self.labels, conf, self.greed_search.best_score_, 
                                         self.greed_search.best_estimator_, self.greed_search.cv_results_, 
                                         self.greed_search.best_params_, y_predicted])
 
@@ -111,7 +118,10 @@ class KFoldCrossVal(CrossValidator):
         df = df.loc[df['params'] == self.greed_search.best_params_] # coger la fila de resultados del mejor estimador
         df = df.iloc[: , 1:] # eliminar la primera columna (unnamed)
         df = df[df.columns.drop(list(df.filter(regex='time|param|params|rank|split')))] # eliminar las columnas que no nos interesan
-        attributes=['best_params_: ' + str(self.greed_search.best_params_)]
+        attributes=[
+                    'best_params_: ' + str(self.greed_search.best_params_),
+                    'cross_val_time: ' + str(end_time)
+                    ]
         for (column, value) in zip(df.columns.tolist(), df.values[0].tolist()):
             attributes.append(column + ': ' + str(value))
 

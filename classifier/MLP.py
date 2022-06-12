@@ -33,9 +33,10 @@ import itertools
 import os
 import matplotlib.pyplot as plt
 import matplotlib
+import time
 
 
-class DNNMutliclass16S(object):
+class MLPMutliclass16S(object):
     '''
     Deep MLP Neural Network
     '''
@@ -47,17 +48,26 @@ class DNNMutliclass16S(object):
     # - early stopping y droppout para evitar overfitting
     # (weights less than one are dropouts in model_arch and the rest the sizes of the hidden layers)
     
-    def __init__(self, X,Y, model_strct='mlp', model_arch=[500]): # model_arch=[1024,0.2,512,0.2,256,0.1,128,8]   num > 0 : sieze of hidden layer,   num < 0 : dropout
+    def __init__(self, X, Y, labels=None, model_strct='mlp', model_arch=[500]): # model_arch=[1024,0.2,512,0.2,256,0.1,128,8]   num > 0 : size of hidden layer,   num < 0 : dropout
         self.X=X
-        self.Y=Y
+        self.Y=[int(i) for i in Y]
 
-        encoder = LabelEncoder()
-        encoder.fit(Y)
-
-        self.C=len(set(self.Y))  # número de tipos de clasificación (2 -> CD, Not-CD)
+        self.Y=np.array(self.Y)
+        #self.onehot_y = np_utils.to_categorical(self.Y)
         
-        self.encoded_Y = encoder.transform(Y) # transform non-numerical labels (as long as they are hashable) to numerical labels
-        self.onehot_y = np_utils.to_categorical(self.encoded_Y) # return a matrix of binary values (either ‘1’ or ‘0’). (rows = length of the input vector, columns = number of classes).
+        print('Y  !!!!!!!!!!!' + str(self.Y))
+
+        self.labels_num=list(set(self.Y))  # labels en formato número:  1 = CD, 0 = Not-CD
+        self.labels_num.sort()             # para que se ponga primero el 0
+        self.C=len(self.labels_num)        # número de tipos de clasificación (2 -> CD, Not-CD)
+        
+        if labels:                         # labels en formato letra, si se las he pasado
+            self.labels=labels
+        else:
+            self.labels=self.labels_num
+
+        print('labels_num  !!!!!!!!!!!' + str(self.labels_num))
+        print('labels      !!!!!!!!!!!' + str(self.labels))
 
         self.model_strct=model_strct # mlp
         self.model_arch=model_arch
@@ -81,12 +91,13 @@ class DNNMutliclass16S(object):
                     model.add(Dropout(h_layer_size))
                 else:
                     model.add(Dense(h_layer_size, activation='relu'))
-        model.add(Dense(self.C, activation='softmax'))
-        # Compile model 
-        # función de coste = cross entropy, optimizador de backpropagation = adam, juzgar la calidad del modelo = accuracy
-        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        if self.C == 2:
+            model.add(Dense(1, activation='sigmoid'))
+            model.compile(loss='binary_crossentropy', optimizer='adam')
+        else:
+            model.add(Dense(self.C, activation='softmax'))
+            model.compile(loss='categorical_crossentropy', optimizer='adam') # función de coste = cross entropy, optimizador de backpropagation = adam, juzgar la calidad del modelo = accuracy
 
-        #print('INICIO MODEL SUMARY!!!!!\n' + str(model.summary()) +  '\nFIN MODEL SUMMARY!!!!!|n')
         return model
 
     # ESTA NO
@@ -110,14 +121,13 @@ class DNNMutliclass16S(object):
                 else:
                     model.add(Dense(h_layer_size, activation='relu'))
         model.add(Dense(self.C, activation='softmax'))
-        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        model.compile(loss='binary_crossentropy', optimizer='adam')
         return model
         
     
     # volver a crear el modelo, pero ahora entrenado en con todos los datos para guardar los pesos y las predicciones
     def make_weights(self, file_path, epochs, batch_size, f1mac):
-        if self.model_strct=='mlp':
-            model=self.get_MLP_model()
+        model=self.get_MLP_model()
         
         model.fit(self.X, self.onehot_y, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=1)
 
@@ -143,7 +153,7 @@ class DNNMutliclass16S(object):
         :param save_weights: gardar os pesos da rede entrenada con todos os datos
         :return:
         '''
-        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_dev # CPUs ???
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_dev
         
         skf = StratifiedKFold(n_splits=n_fold, shuffle=True) # CV con k = 10
 
@@ -159,47 +169,37 @@ class DNNMutliclass16S(object):
         actual_classes = np.empty([0], dtype=int)
         predicted_classes = np.empty([0], dtype=int)
 
+        start_time = time.time()
+
         for train_index, valid_index in skf.split(self.X, self.Y): # Generate indices to split data into training and validation set
             print ('\n Evaluation on a new fold is now get started ..')
             X_train=self.X[train_index,:]
-            y_train=self.onehot_y[train_index,:]      # clasificación real COMPLEJA ( [1,0], [0,1] )
-            y_class_train=self.encoded_Y[train_index] # clasificación real SIMPLE   ( 0, 1 )
+            y_train=self.Y[train_index]
 
             X_valid=self.X[valid_index,:]
-            y_valid=self.onehot_y[valid_index,:]
-            y_class_valid=self.encoded_Y[valid_index]
-
-            #print('y_train           !!!!!!!!! ' + str(y_train))
-            #print('y_class_train     !!!!!!!!! ' + str(y_class_train))
-            #print('y_valid           !!!!!!!!! ' + str(y_valid))
-            #print('y_class_valid     !!!!!!!!! ' + str(y_class_valid))
+            y_valid=self.Y[valid_index]
             
             if pretrained_model:
                 model=self.get_pretrained_model(self.model_strct, trainable)
             else: # ESTA SI
-                if self.model_strct=='mlp':
-                    model=self.get_MLP_model() # modelo con sus capas, pesos, funciones de activación...
+                model=self.get_MLP_model() # modelo con sus capas, pesos, funciones de activación...
             
             # fitting: entrenar el modelo
             history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, shuffle=True, validation_data=(X_valid, y_valid), verbose=1)
             pred = model.predict_classes(X_valid) # Generate class predictions for the input samples batch by batch for the validation set (como el batch ya se estableció antes, aquí ya no se indica)
             
             # score-calculations
-            f1_micro.append(f1_score(y_class_valid, pred, average='micro'))
-            f1_macro.append(f1_score(y_class_valid, pred, average='macro'))
-            p_micro.append(precision_score(y_class_valid, pred, average='micro'))
-            p_macro.append(precision_score(y_class_valid, pred, average='macro'))
-            r_micro.append(recall_score(y_class_valid, pred, average='micro'))
-            r_macro.append(recall_score(y_class_valid, pred, average='macro'))
-            accuracy.append(accuracy_score(y_class_valid, pred))
-            roc_auc.append(roc_auc_score(y_class_valid, pred))
+            f1_micro.append(f1_score(y_valid, pred, average='micro'))
+            f1_macro.append(f1_score(y_valid, pred, average='macro'))
+            p_micro.append(precision_score(y_valid, pred, average='micro'))
+            p_macro.append(precision_score(y_valid, pred, average='macro'))
+            r_micro.append(recall_score(y_valid, pred, average='micro'))
+            r_macro.append(recall_score(y_valid, pred, average='macro'))
+            accuracy.append(accuracy_score(y_valid, pred))
+            roc_auc.append(roc_auc_score(y_valid, pred))
             
-            actual_classes = np.append(actual_classes, y_class_valid)
+            actual_classes = np.append(actual_classes, y_valid)
             predicted_classes = np.append(predicted_classes, pred)
-            #print('y_valid           !!!!!!!!! ' + str(y_valid))
-            #print('pred              !!!!!!!!! ' + str(pred))
-            #print('actual_classes    !!!!!!!!! ' + str(actual_classes))
-            #print('predicted_classes !!!!!!!!! ' + str(predicted_classes))
 
 
         # guardar las métricas obtenidas
@@ -221,6 +221,9 @@ class DNNMutliclass16S(object):
         sremic=np.std(r_micro)
         saccur=np.std(accuracy)
         srocauc=np.std(roc_auc)
+
+        end_time = time.time() - start_time
+
         # table
         #latex_line=' & '.join([str(np.round(x,2))+' $\\pm$ '+str(np.round(y,2)) for x,y in [ [prmic, sprmic], [remic, sremic], [f1mic, sf1mic], [prmac, sprmac], [remac, sremac], [f1mac, sf1mac], [maccur, saccur], [mrocauc, srocauc] ]])      
         
@@ -229,25 +232,19 @@ class DNNMutliclass16S(object):
         val_loss_values = history_dict['val_loss']
         epochs = range(1, len(loss_values) + 1)
 
-        labels_num = list(set(self.encoded_Y)) # 0 = CD, 1 = Not-CD
-        labels_alphanum = list(set(self.Y))
-
-        #print('labels_num !!!!!!!!!!!' + str( list(set(self.encoded_Y)) ))
-        #print('labels_alphanum !!!!!!!!!!!' + str( list(set(self.Y)) ))
-        #print('labels_num ESTATICO !!!!!!!!!!!' + str(labels_num))
-        #print('labels_alphanum ESTATICO !!!!!!!!!!!' + str(labels_alphanum))
-        conf=confusion_matrix(actual_classes, predicted_classes, labels=labels_num)
+        conf=confusion_matrix(actual_classes, predicted_classes, labels=self.labels_num)
 
         '''Saving the metrics:   results_mlp_1024-0.2-512-0.2-256-0.1-128-8_0.65'''
         if pretrained_model:
             self.model_strct='pretrained'
 
                             # file name                                                                                                                   # results to save
-        FileUtility.save_obj(file_path + '/results_' + '_'.join([self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [labels_alphanum, conf, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
+        FileUtility.save_obj(file_path + '/results_' + '_'.join([self.model_strct,'-'.join([str(x) for x in self.model_arch]), str(np.round(f1mac,2))]),  [self.labels, conf, p_micro, r_micro, f1_micro, p_macro, r_macro, f1_macro, accuracy, roc_auc, (loss_values, val_loss_values, epochs)]) 
 
 
         # guardar los datos más importantes en un formato más leíble
         attributes=['model_arch: ' + str(self.model_arch),
+                    'cross_val_time: ' + str(end_time),
                     'mean_f1_macro: ' + str(f1mac),        'mean_f1_micro: ' + str(f1mic), 
                     'mean_precision_macro: ' + str(prmac), 'mean_precision_micro: ' + str(prmic),
                     'mean_recall_macro: ' + str(remac),    'mean_recall_micro: ' + str(remic),
