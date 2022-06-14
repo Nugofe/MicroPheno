@@ -49,25 +49,23 @@ class MLPMutliclass16S(object):
     # (weights less than one are dropouts in model_arch and the rest the sizes of the hidden layers)
     
     def __init__(self, X, Y, labels=None, model_strct='mlp', model_arch=[500]): # model_arch=[1024,0.2,512,0.2,256,0.1,128,8]   num > 0 : size of hidden layer,   num < 0 : dropout
-        self.X=X
-        self.Y=[int(i) for i in Y]
+        if labels:                   # labels en formato letra, si se las he pasado
+            self.labels=labels       # le paso yo el orden qque quiero
+        else:
+            self.labels=list(set(Y)) # me da igual cual sea la clase positiva y cual la negativa
 
-        self.Y=np.array(self.Y)
-        #self.onehot_y = np_utils.to_categorical(self.Y)
-        
-        print('Y  !!!!!!!!!!!' + str(self.Y))
+        self.X = X
+        self.Y = FileUtility.encode_labels(Y, self.labels)
+        self.Y = np.array(self.Y)
 
         self.labels_num=list(set(self.Y))  # labels en formato número:  1 = CD, 0 = Not-CD
         self.labels_num.sort()             # para que se ponga primero el 0
         self.C=len(self.labels_num)        # número de tipos de clasificación (2 -> CD, Not-CD)
         
-        if labels:                         # labels en formato letra, si se las he pasado
-            self.labels=labels
-        else:
-            self.labels=self.labels_num
-
         print('labels_num  !!!!!!!!!!!' + str(self.labels_num))
         print('labels      !!!!!!!!!!!' + str(self.labels))
+        
+        print('Y  !!!!!!!!!!!' + str(self.Y))
 
         self.model_strct=model_strct # mlp
         self.model_arch=model_arch

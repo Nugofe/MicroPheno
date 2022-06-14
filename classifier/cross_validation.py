@@ -12,7 +12,7 @@ from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_pre
 from utility.file_utility import FileUtility
 from sklearn.metrics import f1_score,confusion_matrix
 import pandas as pd
-import time
+from datetime import datetime as dt
 
 
 class CrossValidator(object):
@@ -78,7 +78,7 @@ class KFoldCrossVal(CrossValidator):
         # - refit: Refit (reaxustar) an estimator using the best found parameters on the whole dataset.
         # - error_score: Value to assign to the score if an error occurs in estimator fitting.
         # - n_jobs: Number of jobs to run in parallel.
-        start_time = time.time()
+        start_time = dt.now()
         
         self.greed_search = GridSearchCV(estimator=estimator, param_grid=parameters, cv=self.cv, scoring=self.scoring,
                                          refit=score, error_score=0, n_jobs=n_jobs)
@@ -89,7 +89,7 @@ class KFoldCrossVal(CrossValidator):
         # entrenar el modelo con los mejores parámetros
         y_predicted = cross_val_predict(self.greed_search.best_estimator_, self.X, self.Y)
 
-        end_time = time.time() - start_time
+        end_time = dt.now() - start_time
 
         conf=confusion_matrix(self.Y, y_predicted, labels=self.labels_num)
 

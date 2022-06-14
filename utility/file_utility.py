@@ -131,3 +131,8 @@ class FileUtility(object):
     @staticmethod
     def save_numpy_array(file, array):
         np.savetxt(file, array, delimiter=",")
+
+    @staticmethod
+    def encode_labels(Y, labels=None):
+        if len(labels) == 2: # clasificación binaria
+            return [1 if x==labels[1] else 0 for x in Y]

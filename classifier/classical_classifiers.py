@@ -9,6 +9,7 @@ __website__ = "https://llp.berkeley.edu/micropheno/"
 import sys
 
 sys.path.append('../')
+from utility.file_utility import FileUtility
 from classifier.cross_validation import KFoldCrossVal
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -30,18 +31,19 @@ class RFClassifier:
         self.model = RandomForestClassifier(bootstrap=True, criterion='gini',
                                             min_samples_split=2, max_features='auto', min_samples_leaf=1,
                                             n_estimators=1000) # esta configuración non serve para nada, éralles mellor inicializalo baleiro
+        
+        if labels:                   # labels en formato letra, si se las he pasado
+            self.labels=labels       # le paso yo el orden qque quiero
+        else:
+            self.labels=list(set(Y)) # me da igual cual sea la clase positiva y cual la negativa
+
         self.X = X
-        self.Y = Y
+        self.Y = FileUtility.encode_labels(Y, self.labels)
 
         self.labels_num=list(set(self.Y))  # labels en formato número:  1 = CD, 0 = Not-CD
         self.labels_num.sort()             # para que se ponga primero el 0
         self.C=len(self.labels_num)        # número de tipos de clasificación (2 -> CD, Not-CD)
         
-        if labels:                         # labels en formato letra, si se las he pasado
-            self.labels=labels
-        else:
-            self.labels=self.labels_num
-
         print('labels_num  !!!!!!!!!!!' + str(self.labels_num))
         print('labels      !!!!!!!!!!!' + str(self.labels))
 
@@ -74,18 +76,18 @@ class SVM:
             self.model = SVC(C=1.0, kernel='rbf')
             self.type = 'rbf' # Radial Basis Function kernel
         
+        if labels:                   # labels en formato letra, si se las he pasado
+            self.labels=labels       # le paso yo el orden qque quiero
+        else:
+            self.labels=list(set(Y)) # me da igual cual sea la clase positiva y cual la negativa
+
         self.X = X
-        self.Y = Y
+        self.Y = FileUtility.encode_labels(Y, self.labels)
 
         self.labels_num=list(set(self.Y))  # labels en formato número:  1 = CD, 0 = Not-CD
         self.labels_num.sort()             # para que se ponga primero el 0
         self.C=len(self.labels_num)        # número de tipos de clasificación (2 -> CD, Not-CD)
         
-        if labels:                         # labels en formato letra, si se las he pasado
-            self.labels=labels
-        else:
-            self.labels=self.labels_num
-
         print('labels_num  !!!!!!!!!!!' + str(self.labels_num))
         print('labels      !!!!!!!!!!!' + str(self.labels))
 
